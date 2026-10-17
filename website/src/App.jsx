@@ -123,8 +123,20 @@ export default function App() {
     const normalize = (value = '') => String(value).toLocaleLowerCase('id').normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '').replace(/\[[^\]]*\]/g, ' ').replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
     const currentName = normalize(activeChannel.name);
+    const isOne31 = /one\\s*31|one31/i.test(
+      `${activeChannel.name || ''} ${activeChannel.tvgId || ''}`
+    );
+
     return channels.filter((candidate) => {
       if (!candidate?.url || candidate.url === activeChannel.url || !candidate.url.startsWith('https://')) return false;
+
+      // Lewati mirror One31 yang sebelumnya gagal: HTTP 503 dan CORS.
+      const candidateUrl = candidate.url.toLowerCase();
+      if (isOne31 && (
+        candidateUrl.includes('bcovlive-a.akamaihd.net') ||
+        candidateUrl.includes('lb1-live-mv.v2h-cdn.com')
+      )) return false;
+
       if (candidate.countryCode !== activeChannel.countryCode) return false;
       if (activeChannel.tvgId && candidate.tvgId && candidate.tvgId === activeChannel.tvgId) return true;
       // Different providers sometimes label the same service with different tvg-id values.

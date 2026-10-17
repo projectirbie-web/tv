@@ -72,6 +72,7 @@ export default function VideoPlayer({ channel, fallbacks = [], onStatus }) {
     let disposed = false;
     let switchedSource = false;
     let mediaRecoveryUsed = false;
+    let liveRecoveryUsed = false;
     let stallTimer;
     const source = activeSource;
 
@@ -120,8 +121,44 @@ export default function VideoPlayer({ channel, fallbacks = [], onStatus }) {
       if (disposed || video.readyState >= 3) return;
       setPlayerStatus('loading');
       if (stallTimer) clearTimeout(stallTimer);
+
       stallTimer = setTimeout(() => {
-        if (!disposed && video.readyState < 3) switchToNextSource('Siaran terlalu lama berhenti memuat.');
+        if (disposed || video.readyState >= 3) return;
+
+        const hls = hlsRef.current;
+
+        // Coba sinkronisasi ulang ke posisi live sebelum pindah sumber.
+        if (hls && !liveRecoveryUsed) {
+          liveRecoveryUsed = true;
+          setPlayerStatus('loading', 'Siaran macet; mencoba sinkronisasi ulang live…');
+
+          try {
+            hls.startLoad(-1);
+
+            if (Number.isFinite(hls.liveSyncPosition) && hls.liveSyncPosition >= 0) {
+              video.currentTime = hls.liveSyncPosition;
+            } else if (video.seekable.length > 0) {
+              const last = video.seekable.length - 1;
+              const start = video.seekable.start(last);
+              const end = video.seekable.end(last);
+              video.currentTime = Math.max(start, end - 3);
+            }
+
+            video.play().catch(() => {});
+          } catch {
+            // Jika pemulihan gagal, coba fallback setelah masa tunggu.
+          }
+
+          stallTimer = setTimeout(() => {
+            if (!disposed && video.readyState < 3) {
+              switchToNextSource('Siaran tetap macet setelah sinkronisasi ulang.');
+            }
+          }, 10000);
+
+          return;
+        }
+
+        switchToNextSource('Siaran terlalu lama berhenti memuat.');
       }, 14000);
     };
     const handleCanPlay = () => {
