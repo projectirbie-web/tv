@@ -1,37 +1,21 @@
-node_modules/
-dist/
-.env
+# Operating system
 .DS_Store
-public/channels.json
-/node_modules/
-/dist/
+
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+dist/
+out/
+.vercel/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Generated channel catalog and diagnostics
 /public/channels.json
-/website/node_modules/
-/website/dist/
 /website/public/channels.json
-
-website/stream-health-report.json
-
-# Dependencies and generated build files
-node_modules/
-.next/
-.vercel/
-out/
-dist/
-
-# Local environment secrets
-.env
-.env.*
-!.env.example
-
-# Dependencies and generated build files
-node_modules/
-.next/
-.vercel/
-out/
-dist/
-
-# Local environment secrets
-.env
-.env.*
-!.env.example
+/website/stream-health-report.json
