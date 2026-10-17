@@ -66,6 +66,13 @@ export default function VideoPlayer({ channel, fallbacks = [], onStatus }) {
   }, [channel?.url, channel?.name]);
 
   useEffect(() => {
+    if (channel?.playerType === 'official-link') {
+      setStatus('idle');
+      setMessage('Sumber resmi belum memiliki player embed yang terverifikasi.');
+      onStatus?.('idle');
+      return undefined;
+    }
+
     if (channel?.playerType === 'embed') {
       setStatus('loading');
       setMessage('Memuat player resmi…');
@@ -357,6 +364,38 @@ export default function VideoPlayer({ channel, fallbacks = [], onStatus }) {
     '--ambient-primary': ambientColors.primary,
     '--ambient-secondary': ambientColors.secondary,
   };
+
+  if (channel?.playerType === 'official-link' && channel.url) {
+    return (
+      <div
+        className={`player-stage ${ambientOn ? 'ambient-enabled' : 'ambient-disabled'}`}
+        style={stageStyle}
+      >
+        <div className="ambient-light ambient-light-one" aria-hidden="true" />
+        <div className="ambient-light ambient-light-two" aria-hidden="true" />
+        <div className="player-wrap official-embed-wrap">
+          <div className="official-link-card">
+            <div className="player-empty-icon"><Radio size={28} /></div>
+            <p className="eyebrow">SUMBER SIARAN RESMI</p>
+            <h2>{channel.name}</h2>
+            <p className="official-link-note">
+              Halaman sumber tersedia. Player yang diizinkan untuk ditanam
+              di YEGTv belum terverifikasi, jadi pemutaran langsung di sini
+              belum tersedia untuk channel ini.
+            </p>
+            <a
+              className="external-link official-source-link"
+              href={channel.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <ExternalLink size={14} /> Buka player resmi di tab baru
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (channel?.playerType === 'embed' && channel.url) {
     return (

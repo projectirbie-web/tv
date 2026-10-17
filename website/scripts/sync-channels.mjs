@@ -175,8 +175,8 @@ async function main() {
     officialChannels = parsed.map((row, index) => {
       if (!row?.id || !row?.name ||
           !/^https:\/\//i.test(row.url || '') ||
-          row.playerType !== 'embed') {
-        throw new Error(`Entri embed resmi ke-${index + 1} tidak valid.`);
+          !['embed', 'official-link'].includes(row.playerType)) {
+        throw new Error(`Entri sumber resmi ke-${index + 1} tidak valid.`);
       }
 
       return {
@@ -190,7 +190,7 @@ async function main() {
       };
     });
 
-    console.log(`Membaca ${officialChannels.length} sumber embed resmi.`);
+    console.log(`Membaca ${officialChannels.length} sumber resmi (embed/halaman).`);
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
     console.log('Katalog embed resmi belum dibuat; hanya menggunakan playlist.');
