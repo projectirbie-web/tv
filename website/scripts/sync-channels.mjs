@@ -161,13 +161,48 @@ async function main() {
     });
   }
 
+  // Tambahkan sumber resmi berupa embed yang memang disediakan
+  // untuk ditampilkan di dalam situs lain.
+  const officialFile = path.join(websiteRoot, 'data', 'official-channels.json');
+  let officialChannels = [];
+
+  try {
+    const parsed = JSON.parse(await readFile(officialFile, 'utf8'));
+    if (!Array.isArray(parsed)) {
+      throw new Error('official-channels.json harus berupa array.');
+    }
+
+    officialChannels = parsed.map((row, index) => {
+      if (!row?.id || !row?.name ||
+          !/^https:\/\//i.test(row.url || '') ||
+          row.playerType !== 'embed') {
+        throw new Error(`Entri embed resmi ke-${index + 1} tidak valid.`);
+      }
+
+      return {
+        ...row,
+        countryCode: String(row.countryCode || 'ID').toUpperCase(),
+        category: row.category || 'Resmi',
+        logo: row.logo || '',
+        tvgId: row.tvgId || row.id,
+        requiresReferrer: Boolean(row.requiresReferrer),
+        requiresUserAgent: Boolean(row.requiresUserAgent),
+      };
+    });
+
+    console.log(`Membaca ${officialChannels.length} sumber embed resmi.`);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    console.log('Katalog embed resmi belum dibuat; hanya menggunakan playlist.');
+  }
+
   const seen = new Set();
   const channels = [];
-  for (const row of perFile.flat()) {
+  for (const row of [...perFile.flat(), ...officialChannels]) {
     const key = `${row.url}\n${row.name}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    channels.push(row);
+    channels.push({ ...row, playerType: row.playerType || 'hls' });
   }
   const countryPriority = ['id', 'my', 'th', 'kr', 'jp', 'sa', 'ae', 'qa', 'kw', 'bh', 'om', 'ye', 'jo', 'iq', 'lb', 'ps', 'il', 'us', 'gb', 'uk', 'ca', 'au', 'nz', 'fr', 'de', 'es', 'it'];
   const priorityIndex = (code) => {
@@ -182,6 +217,7 @@ async function main() {
     source: `https://github.com/${owner}/${repo}/tree/${branch}/streams`,
     generatedAt: new Date().toISOString(),
     sourceFileCount,
+    officialChannelCount: officialChannels.length,
     count: channels.length,
     channels,
   })}\n`);

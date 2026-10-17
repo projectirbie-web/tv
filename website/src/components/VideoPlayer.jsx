@@ -66,6 +66,13 @@ export default function VideoPlayer({ channel, fallbacks = [], onStatus }) {
   }, [channel?.url, channel?.name]);
 
   useEffect(() => {
+    if (channel?.playerType === 'embed') {
+      setStatus('loading');
+      setMessage('Memuat player resmi…');
+      onStatus?.('loading');
+      return undefined;
+    }
+
     const video = videoRef.current;
     if (!video) return undefined;
 
@@ -281,7 +288,7 @@ export default function VideoPlayer({ channel, fallbacks = [], onStatus }) {
       video.removeAttribute('src');
       video.load();
     };
-  }, [channel?.url, activeSource?.url, attemptIndex, candidates.length, onStatus, retryNonce]);
+  }, [channel?.url, channel?.playerType, activeSource?.url, attemptIndex, candidates.length, onStatus, retryNonce]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -350,6 +357,37 @@ export default function VideoPlayer({ channel, fallbacks = [], onStatus }) {
     '--ambient-primary': ambientColors.primary,
     '--ambient-secondary': ambientColors.secondary,
   };
+
+  if (channel?.playerType === 'embed' && channel.url) {
+    return (
+      <div
+        className={`player-stage ${ambientOn ? 'ambient-enabled' : 'ambient-disabled'}`}
+        style={stageStyle}
+      >
+        <div className="player-wrap official-embed-wrap">
+          <iframe
+            className="official-embed-frame"
+            src={channel.url}
+            title={`Player resmi ${channel.name}`}
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+            loading="eager"
+            onLoad={() => {
+              setStatus('ready');
+              setMessage('');
+              onStatus?.('ready');
+            }}
+            onError={() => {
+              setStatus('error');
+              setMessage('Player resmi tidak dapat dimuat oleh browser.');
+              onStatus?.('error');
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   if (!channel) {
     return (
