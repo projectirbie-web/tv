@@ -1,0 +1,11 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/health/route": "/api/health",
+  "/channel/[slug]/page": "/channel/[slug]",
+  "/favorit/page": "/favorit",
+  "/jelajah/page": "/jelajah",
+  "/page": "/",
+  "/siaran/page": "/siaran",
+  "/tentang/page": "/tentang"
+}

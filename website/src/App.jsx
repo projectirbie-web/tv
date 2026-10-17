@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowDownWideNarrow, ChevronDown, ChevronRight, CircleHelp,
@@ -11,6 +11,23 @@ import VideoPlayer from './components/VideoPlayer.jsx';
 import { channelInitials, countryName } from './lib/playlist.js';
 
 const PAGE_SIZE = 60;
+let catalogPromise;
+function loadChannelCatalog() {
+  if (!catalogPromise) {
+    catalogPromise = fetch('/channels.json')
+      .then((response) => {
+        if (!response.ok) throw new Error(`Tidak bisa membaca katalog (HTTP ${response.status}).`);
+        return response.json();
+      })
+      .then((data) => {
+        const rows = Array.isArray(data) ? data : data.channels;
+        if (!Array.isArray(rows)) throw new Error('Format katalog channel tidak valid.');
+        return rows.filter((item) => item && typeof item.name === 'string' && /^https?:\/\//i.test(item.url || ''));
+      })
+      .catch((error) => { catalogPromise = undefined; throw error; });
+  }
+  return catalogPromise;
+}
 const SOURCE_REPO = 'https://github.com/projectirbie-web/tv';
 
 function slugify(value = '') {
@@ -71,9 +88,9 @@ function ChannelCard({ channel, favorite, onSelect, onFavorite }) {
 function PageHeading({ kicker, title, description, action }) {
   return <div className="page-heading"><div><span className="section-kicker">{kicker}</span><h1>{title}</h1>{description && <p>{description}</p>}</div>{action}</div>;
 }
-function LoadMessage({ loadState, loadError }) {
+function LoadMessage({ loadState, loadError, onRetry }) {
   if (loadState === 'loading') return <div className="state-panel"><LoaderCircle className="spin" size={25} /><strong>Memuat katalog channel…</strong><span>Mengambil data playlist dan menyiapkan katalog YEGTv.</span></div>;
-  if (loadState === 'error') return <div className="state-panel state-error"><Info size={25} /><strong>Data channel belum tersedia</strong><span>{loadError}</span><small>Periksa apakah `channels.json` berhasil dibuat pada proses build.</small></div>;
+  if (loadState === 'error') return <div className="state-panel state-error"><Info size={25} /><strong>Data channel belum tersedia</strong><span>{loadError}</span><small>Periksa apakah `channels.json` berhasil dibuat pada proses build.</small>{onRetry && <button className="secondary-action" onClick={onRetry}>Coba muat ulang katalog</button>}</div>;
   return null;
 }
 function ChannelGrid({ channels, favorites, onSelect, onFavorite, emptyTitle = 'Belum ada channel', emptyDescription = 'Pilih channel dari katalog untuk memulai.' }) {
@@ -91,14 +108,45 @@ export default function App() {
   const [channels, setChannels] = useState([]);
   const [loadState, setLoadState] = useState('loading');
   const [loadError, setLoadError] = useState('');
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
   const [activeChannel, setActiveChannel] = useState(null);
   const [search, setSearch] = useState(() => searchParams.get('q') || '');
+  const deferredSearch = useDeferredValue(search);
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   const [country, setCountry] = useState('all');
   const [category, setCategory] = useState('all');
   const [favorites, setFavorites] = useState(() => new Set());
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [playerStatus, setPlayerStatus] = useState('idle');
+  const fallbackChannels = useMemo(() => {
+    if (!activeChannel) return [];
+    const normalize = (value = '') => String(value).toLocaleLowerCase('id').normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '').replace(/\[[^\]]*\]/g, ' ').replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+    const currentName = normalize(activeChannel.name);
+    return channels.filter((candidate) => {
+      if (!candidate?.url || candidate.url === activeChannel.url || !candidate.url.startsWith('https://')) return false;
+      if (candidate.countryCode !== activeChannel.countryCode) return false;
+      if (activeChannel.tvgId && candidate.tvgId && candidate.tvgId === activeChannel.tvgId) return true;
+      // Different providers sometimes label the same service with different tvg-id values.
+      // Only use a name match within the same country, and prefer sources without custom headers.
+      return normalize(candidate.name) === currentName;
+    }).sort((a, b) => {
+      const sourceScore = (item) => {
+        const url = String(item.url || '').toLowerCase();
+        let score = Number(Boolean(item.requiresReferrer || item.requiresUserAgent)) * 100;
+
+        // Prioritaskan mirror Thailand yang manifest-nya telah teruji terbaca.
+        if (String(activeChannel.countryCode || '').toUpperCase() === 'TH'
+            && url.includes('live-us1.thaimomo.com')) {
+          score -= 1000;
+        }
+
+        return score;
+      };
+
+      return sourceScore(a) - sourceScore(b);
+    }).slice(0, 3);
+  }, [channels, activeChannel?.url, activeChannel?.tvgId, activeChannel?.countryCode, activeChannel?.name]);
 
   const navigate = useCallback((to) => {
     const target = new URL(to, window.location.origin);
@@ -107,7 +155,7 @@ export default function App() {
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     if (next !== current) router.push(next);
     setVisibleCount(PAGE_SIZE);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'auto' });
   }, [router]);
 
   useEffect(() => {
@@ -115,22 +163,30 @@ export default function App() {
   }, [currentPath, queryString]);
 
   useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      ['/jelajah', '/siaran', '/favorit', '/tentang'].forEach((path) => router.prefetch(path));
+    }, 600);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [router]);
+
+  useEffect(() => {
     setFavorites(readFavorites());
     setFavoritesLoaded(true);
   }, []);
 
+  const retryCatalog = useCallback(() => {
+    setLoadState('loading');
+    setLoadError('');
+    setCatalogAttempt((attempt) => attempt + 1);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    fetch('/channels.json', { cache: 'no-store' })
-      .then((response) => {
-        if (!response.ok) throw new Error(`Tidak bisa membaca channels.json (HTTP ${response.status}).`);
-        return response.json();
-      })
-      .then((data) => {
+    loadChannelCatalog()
+      .then((safeRows) => {
         if (cancelled) return;
-        const rows = Array.isArray(data) ? data : data.channels;
-        if (!Array.isArray(rows)) throw new Error('Format channels.json tidak valid.');
-        const safeRows = rows.filter((item) => item && typeof item.name === 'string' && /^https?:\/\//i.test(item.url || ''));
         setChannels(safeRows);
         setLoadState('ready');
       })
@@ -140,7 +196,7 @@ export default function App() {
         setLoadState('error');
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [catalogAttempt]);
 
   useEffect(() => {
     if (!favoritesLoaded) return;
@@ -163,10 +219,17 @@ export default function App() {
   const isChannelPage = /^\/channel\/[^/]+$/.test(currentPath);
   const isKnownRoute = ['/', '/jelajah', '/siaran', '/favorit', '/tentang'].includes(currentPath) || isChannelPage;
   const activeNav = currentPath === '/favorit' ? 'favorites' : currentPath === '/siaran' ? 'live' : currentPath === '/jelajah' ? 'explore' : 'home';
-  const countries = useMemo(() => [...new Set(channels.map((item) => item.countryCode).filter(Boolean))].sort((a, b) => countryName(a).localeCompare(countryName(b), 'id')), [channels]);
+  const countries = useMemo(() => {
+    const priority = ['id', 'my', 'th', 'kr', 'jp', 'sa', 'ae', 'qa', 'kw', 'bh', 'om', 'ye', 'jo', 'iq', 'lb', 'ps', 'il', 'us', 'gb', 'uk', 'ca', 'au', 'nz'];
+    return [...new Set(channels.map((item) => item.countryCode).filter(Boolean))].sort((a, b) => {
+      const ai = priority.indexOf(String(a).toLowerCase()); const bi = priority.indexOf(String(b).toLowerCase());
+      if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      return countryName(a).localeCompare(countryName(b), 'id');
+    });
+  }, [channels]);
   const categories = useMemo(() => [...new Set(channels.map((item) => item.category || 'Umum'))].sort((a, b) => a.localeCompare(b, 'id')), [channels]);
   const filteredChannels = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase('id');
+    const q = deferredSearch.trim().toLocaleLowerCase('id');
     return channels.filter((channel) => {
       if (currentPath === '/favorit' && !favorites.has(channel.url)) return false;
       if (country !== 'all' && channel.countryCode !== country) return false;
@@ -175,7 +238,7 @@ export default function App() {
       return [channel.name, channel.countryCode, countryName(channel.countryCode), channel.category, channel.tvgId]
         .filter(Boolean).some((field) => String(field).toLocaleLowerCase('id').includes(q));
     });
-  }, [channels, search, country, category, currentPath, favorites]);
+  }, [channels, deferredSearch, country, category, currentPath, favorites]);
   const visibleChannels = filteredChannels.slice(0, visibleCount);
   const featuredChannels = channels.slice(0, 3);
   const handlePlayerStatus = useCallback((status) => setPlayerStatus(status), []);
@@ -219,7 +282,7 @@ export default function App() {
       {currentPath === '/' && <div className="page-content home-page">
         <section className="hero-section"><div className="hero-heading"><div><span className="section-kicker"><Sparkles size={13} /> TELEVISI DALAM SATU TEMPAT</span><h1>Temukan siaran<br /><span>yang kamu suka.</span></h1><p>Jelajahi ribuan channel, temukan tontonan pilihan, lalu nikmati siaran langsung dalam pengalaman glass yang nyaman.</p><div className="hero-ctas"><button className="primary-action" onClick={() => navigate('/jelajah')}><Compass size={16} /> Jelajahi channel</button><button className="secondary-action hero-secondary" onClick={() => navigate('/siaran')}><MonitorPlay size={16} /> Buka siaran</button></div></div>
           <div className="hero-live-count"><span className="live-dot" /><span><strong>{loadState === 'ready' ? channels.length.toLocaleString('id-ID') : '—'}</strong><small>CHANNEL DI KATALOG</small></span></div></div>
-          <LoadMessage loadState={loadState} loadError={loadError} />
+          <LoadMessage loadState={loadState} loadError={loadError} onRetry={retryCatalog} />
           {loadState === 'loading' && <div className="feature-grid feature-skeletons">{[0,1,2].map((n) => <div className="feature-skeleton" key={n} />)}</div>}
           {loadState === 'ready' && <div className="feature-grid">{featuredChannels.map((channel, index) => <FeaturedChannel key={`${channel.url}-${channel.name}`} channel={channel} index={index} onSelect={openChannel} />)}</div>}
         </section>
@@ -231,7 +294,7 @@ export default function App() {
 
       {currentPath === '/jelajah' && <div className="page-content browse-page">
         <PageHeading kicker="KATALOG YEGTV" title="Jelajahi channel" description="Temukan siaran berdasarkan nama, negara, atau kategori." action={<div className="result-counter"><Signal size={15} /> {filteredChannels.length.toLocaleString('id-ID')} channel</div>} />
-        <LoadMessage loadState={loadState} loadError={loadError} />
+        <LoadMessage loadState={loadState} loadError={loadError} onRetry={retryCatalog} />
         <div className="filter-panel"><label className="select-wrap"><Globe2 size={15} /><select value={country} onChange={(event) => { setCountry(event.target.value); setVisibleCount(PAGE_SIZE); }} aria-label="Filter negara"><option value="all">Semua negara</option>{countries.map((code) => <option value={code} key={code}>{countryName(code)}</option>)}</select><ChevronDown size={14} /></label>
           <label className="select-wrap"><ArrowDownWideNarrow size={15} /><select value={category} onChange={(event) => { setCategory(event.target.value); setVisibleCount(PAGE_SIZE); }} aria-label="Filter kategori"><option value="all">Semua kategori</option>{categories.map((name) => <option key={name} value={name}>{name}</option>)}</select><ChevronDown size={14} /></label>
           {(search || country !== 'all' || category !== 'all') && <button className="clear-filter" onClick={resetFilters}>Reset filter <X size={13} /></button>}
@@ -241,22 +304,22 @@ export default function App() {
 
       {currentPath === '/favorit' && <div className="page-content favorites-page">
         <PageHeading kicker="KOLEKSI PRIBADI" title="Channel favorit" description="Semua channel yang kamu simpan, terkumpul di satu tempat." action={<div className="hero-live-count"><Heart size={15} /><span><strong>{favorites.size}</strong><small>DISIMPAN</small></span></div>} />
-        <LoadMessage loadState={loadState} loadError={loadError} />
+        <LoadMessage loadState={loadState} loadError={loadError} onRetry={retryCatalog} />
         {loadState === 'ready' && <ChannelGrid channels={filteredChannels} favorites={favorites} onSelect={openChannel} onFavorite={toggleFavorite} emptyTitle={search ? 'Favorit tidak ditemukan' : 'Belum ada channel favorit'} emptyDescription={search ? 'Coba kata pencarian lain.' : 'Tekan ikon hati pada channel yang kamu suka, lalu channel itu akan muncul di sini.'} />}
         {loadState === 'ready' && favorites.size === 0 && <button className="primary-action favorites-cta" onClick={() => navigate('/jelajah')}><Compass size={16} /> Jelajahi channel</button>}
       </div>}
 
       {currentPath === '/siaran' && <div className="page-content live-page">
         <PageHeading kicker="YEGTV LIVE" title="Siaran langsung" description="Pilih channel dan tonton di halaman ini. Ketersediaan stream bergantung pada penyedia masing-masing." action={<span className={`connection-status ${playerStatus === 'playing' ? 'connected' : playerStatus === 'error' ? 'disconnected' : ''}`}><span className="status-dot" />{playerStatus === 'playing' ? 'Sedang diputar' : playerStatus === 'error' ? 'Stream bermasalah' : playerStatus === 'loading' ? 'Menghubungkan' : 'Siap menonton'}</span>} />
-        <LoadMessage loadState={loadState} loadError={loadError} />
-        {loadState === 'ready' && <div className="live-page-layout"><section className="live-main"><div className="glass-panel live-player-panel"><VideoPlayer channel={activeChannel} onStatus={handlePlayerStatus} /></div>
+        <LoadMessage loadState={loadState} loadError={loadError} onRetry={retryCatalog} />
+        {loadState === 'ready' && <div className="live-page-layout"><section className="live-main"><div className="glass-panel live-player-panel"><VideoPlayer key={activeChannel?.url || 'empty-player'} channel={activeChannel} fallbacks={fallbackChannels} onStatus={handlePlayerStatus} /></div>
           {activeChannel ? <div className="live-channel-info glass-panel"><div className="live-detail-brand"><ChannelLogo channel={activeChannel} large /><div><span className="section-kicker">SEKARANG DIPUTAR</span><h2>{activeChannel.name}</h2><p>{countryName(activeChannel.countryCode)} · {activeChannel.category || 'Umum'}</p></div></div><div className="detail-actions"><button className="primary-action" onClick={() => document.querySelector('.video-element')?.play().catch(() => {})}><Play size={15} fill="currentColor" /> Putar channel</button><button className={`secondary-action ${favorites.has(activeChannel.url) ? 'favorited' : ''}`} onClick={() => toggleFavorite(activeChannel)}><Heart size={15} fill={favorites.has(activeChannel.url) ? 'currentColor' : 'none'} /> {favorites.has(activeChannel.url) ? 'Tersimpan' : 'Favorit'}</button><button className="secondary-action" onClick={() => openChannel(activeChannel)}><Info size={15} /> Detail</button></div></div> : null}
         </section><aside className="live-sidebar glass-panel"><div className="sidebar-title"><div><span className="section-kicker">KATALOG</span><h2>Pilih channel</h2></div><span>{channels.length.toLocaleString('id-ID')}</span></div><div className="live-channel-list">{channels.slice(0,30).map((channel) => <button className={`live-channel-item ${activeChannel?.url === channel.url ? 'active' : ''}`} key={`${channel.url}-${channel.name}`} onClick={() => watchChannel(channel)}><ChannelLogo channel={channel} /><span><strong>{channel.name}</strong><small>{countryName(channel.countryCode)} · {channel.category || 'Umum'}</small></span><Play size={13} /></button>)}</div><button className="load-more live-more" onClick={() => navigate('/jelajah')}>Jelajahi semua channel <ChevronRight size={14} /></button></aside></div>}
       </div>}
 
       {isChannelPage && <div className="page-content channel-page">
         {!activeChannel && loadState === 'ready' ? <div className="state-panel"><Radio size={29} /><strong>Channel tidak ditemukan</strong><span>Channel ini mungkin sudah tidak ada di katalog.</span><button className="primary-action" onClick={() => navigate('/jelajah')}>Kembali ke katalog</button></div> : null}
-        {loadState === 'loading' && <LoadMessage loadState={loadState} loadError={loadError} />}
+        {loadState === 'loading' && <LoadMessage loadState={loadState} loadError={loadError} onRetry={retryCatalog} />}
         {activeChannel && <><button className="back-link" onClick={() => navigate('/jelajah')}><ArrowLeft size={15} /> Kembali ke jelajah</button><div className="channel-detail-layout"><section className="channel-detail-hero glass-panel" style={{ '--hue': hueFor(activeChannel.name) }}><div className="detail-backdrop" /><ChannelLogo channel={activeChannel} large /><div className="channel-detail-text"><span className="section-kicker"><span className="live-dot" /> HALAMAN CHANNEL</span><h1>{activeChannel.name}</h1><p>{countryName(activeChannel.countryCode)} · {activeChannel.category || 'Umum'}</p><div className="detail-actions"><button className="primary-action" onClick={() => watchChannel(activeChannel)}><Play size={15} fill="currentColor" /> Tonton siaran</button><button className={`secondary-action ${favorites.has(activeChannel.url) ? 'favorited' : ''}`} onClick={() => toggleFavorite(activeChannel)}><Heart size={15} fill={favorites.has(activeChannel.url) ? 'currentColor' : 'none'} /> {favorites.has(activeChannel.url) ? 'Tersimpan' : 'Simpan favorit'}</button></div></div></section><section className="glass-panel channel-meta-panel"><div className="section-kicker">INFORMASI CHANNEL</div><div className="channel-meta-row"><span>Nama</span><strong>{activeChannel.name}</strong></div><div className="channel-meta-row"><span>Negara</span><strong>{countryName(activeChannel.countryCode)}</strong></div><div className="channel-meta-row"><span>Kode negara</span><strong>{activeChannel.countryCode || '—'}</strong></div><div className="channel-meta-row"><span>Kategori</span><strong>{activeChannel.category || 'Umum'}</strong></div><div className="channel-meta-row"><span>ID playlist</span><strong>{activeChannel.tvgId || 'Tidak tersedia'}</strong></div><p className="detail-disclaimer"><Info size={14} /> YEGTv adalah katalog. Ketersediaan siaran dan hak tayang mengikuti penyedia sumber.</p></section></div><section className="browse-section detail-related"><div className="section-heading"><div><span className="section-kicker">TEMUKAN LAGI</span><h2>Channel lainnya</h2></div><button className="text-action" onClick={() => navigate('/jelajah')}>Lihat semua <ChevronRight size={15} /></button></div><ChannelGrid channels={channels.filter((item) => item.url !== activeChannel.url).slice(0,5)} favorites={favorites} onSelect={openChannel} onFavorite={toggleFavorite} /></section></>}
       </div>}
 

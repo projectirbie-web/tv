@@ -1,0 +1,13 @@
+var R=require("../../chunks/ssr/[turbopack]_runtime.js")("server/app/tentang/page.js")
+R.c("server/chunks/ssr/[root-of-the-server]__126l3g0fe1g6-._.js")
+R.c("server/chunks/ssr/00k4_next_dist_esm_build_templates_app-page_1ggn_xm26a8zt.js")
+R.c("server/chunks/ssr/[root-of-the-server]__0x5n7b0t3m_vq._.js")
+R.c("server/chunks/ssr/00k4_next_dist_18s2584wswugs._.js")
+R.c("server/chunks/ssr/[root-of-the-server]__1e6cwy_j7rab2._.js")
+R.c("server/chunks/ssr/00k4_next_dist_client_components_0jd10zvol9s9-._.js")
+R.c("server/chunks/ssr/00k4_next_dist_client_components_builtin_forbidden_1taihp9f4oxil.js")
+R.c("server/chunks/ssr/00k4_next_dist_client_components_builtin_unauthorized_180ijb5iy013y.js")
+R.c("server/chunks/ssr/00k4_next_dist_client_components_builtin_global-error_00tmg1mpeild3.js")
+R.c("server/chunks/ssr/website__next-internal_server_app_tentang_page_actions_0bh3qhktmj68b.js")
+R.m(74411)
+module.exports=R.m(74411).exports

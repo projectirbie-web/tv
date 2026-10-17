@@ -34,12 +34,20 @@ function parseM3U(source, countryCode) {
         name: name || 'Channel tanpa nama',
         ...parseAttributes(metadata),
         countryCode: countryCode.toUpperCase(),
+        requiresReferrer: false,
+        requiresUserAgent: false,
       };
       continue;
     }
 
-    // EXTVLCOPT (Referer/User-Agent) is intentionally not applied: browser
-    // JavaScript cannot override these headers on arbitrary third-party streams.
+    // Preserve the fact that the source asks for headers. A browser player cannot
+    // freely override Referer/User-Agent for arbitrary third-party origins, so the
+    // player can prefer a compatible HTTPS mirror rather than silently pretending.
+    if (line.startsWith('#EXTVLCOPT:') && current) {
+      if (/http-referrer\s*=/i.test(line)) current.requiresReferrer = true;
+      if (/http-user-agent\s*=/i.test(line)) current.requiresUserAgent = true;
+      continue;
+    }
     if (line.startsWith('#')) continue;
 
     if (current && /^https?:\/\//i.test(line)) {
@@ -52,6 +60,8 @@ function parseM3U(source, countryCode) {
         tvgId: attrs['tvg-id'] || '',
         category: attrs['group-title'] || attrs.category || 'Umum',
         countryCode: attrs.countryCode,
+        requiresReferrer: Boolean(attrs.requiresReferrer),
+        requiresUserAgent: Boolean(attrs.requiresUserAgent),
       });
     }
     current = null;
@@ -103,6 +113,7 @@ async function main() {
   }
 
   let failedFiles = 0;
+  let sourceFileCount = localFiles.length;
   let perFile;
   if (localFiles.length) {
     console.log(`Membaca ${localFiles.length} playlist lokal dari ${streamsDir}...`);
@@ -133,6 +144,7 @@ async function main() {
       if (pageFiles.length < 100) break;
     }
     const playlistFiles = remoteFiles;
+    sourceFileCount = playlistFiles.length;
     if (!playlistFiles.length) throw new Error('Tidak menemukan playlist .m3u/.m3u8 pada folder streams/.');
     console.log(`Menemukan ${playlistFiles.length} playlist; mulai menggabungkan channel...`);
     perFile = await mapLimit(playlistFiles, 8, async (file) => {
@@ -157,15 +169,22 @@ async function main() {
     seen.add(key);
     channels.push(row);
   }
-  channels.sort((a, b) => a.name.localeCompare(b.name, 'id'));
+  const countryPriority = ['id', 'my', 'th', 'kr', 'jp', 'sa', 'ae', 'qa', 'kw', 'bh', 'om', 'ye', 'jo', 'iq', 'lb', 'ps', 'il', 'us', 'gb', 'uk', 'ca', 'au', 'nz', 'fr', 'de', 'es', 'it'];
+  const priorityIndex = (code) => {
+    const index = countryPriority.indexOf(String(code || '').toLowerCase());
+    return index === -1 ? countryPriority.length : index;
+  };
+  channels.sort((a, b) => priorityIndex(a.countryCode) - priorityIndex(b.countryCode)
+    || a.name.localeCompare(b.name, 'id'));
 
   await mkdir(path.dirname(outputFile), { recursive: true });
   await writeFile(outputFile, `${JSON.stringify({
     source: `https://github.com/${owner}/${repo}/tree/${branch}/streams`,
     generatedAt: new Date().toISOString(),
+    sourceFileCount,
     count: channels.length,
     channels,
-  }, null, 2)}\n`);
+  })}\n`);
 
   if (channels.length === 0) throw new Error('Playlist ditemukan, tetapi tidak ada entri stream HTTP/HTTPS yang valid.');
   console.log(`Selesai: ${channels.length} entri channel disimpan ke public/channels.json.`);

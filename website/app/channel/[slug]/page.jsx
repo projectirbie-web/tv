@@ -1,4 +1,5 @@
-import AppPage from '../../_components/AppPage.jsx';
+import App from '../../../src/App.jsx';
+
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -11,4 +12,4 @@ export async function generateMetadata({ params }) {
   };
 }
 
-export default function ChannelDetailPage() { return <AppPage />; }
+export default function ChannelDetailPage() { return <App />; }
