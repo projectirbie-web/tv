@@ -20,3 +20,8 @@ The website uses Next.js App Router and request-rendered route handling (`dynami
 - `/channel/:slug?url=...` — detail channel dengan URL yang dapat dibagikan
 
 The `prebuild` script creates `public/channels.json` from `../streams` when that folder is available. If Vercel's selected Root Directory does not expose files outside `website`, the generator falls back to reading playlists from the configured GitHub repository. Channel favourites are stored locally in the visitor's browser; the catalogue itself is generated from the repository's public playlists.
+
+
+## Quick server check
+
+After deployment, open `/api/health`. A healthy deployment returns JSON with `ok: true`, the generated catalog count, source playlist file count, and generation time. If this route returns HTTP 503, inspect the Vercel build log for `sync:channels`. This endpoint checks YEGTv's app/catalog only; it does not claim that every third-party broadcaster stream is online.

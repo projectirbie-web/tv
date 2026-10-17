@@ -1,6 +1,15 @@
+const COUNTRY_ALIASES = {
+  ID: 'Indonesia', MY: 'Malaysia', TH: 'Thailand', KR: 'Korea Selatan', KP: 'Korea Utara',
+  JP: 'Jepang', SA: 'Arab Saudi', AE: 'Uni Emirat Arab', QA: 'Qatar', KW: 'Kuwait',
+  BH: 'Bahrain', OM: 'Oman', YE: 'Yaman', JO: 'Yordania', IQ: 'Irak', LB: 'Lebanon',
+  PS: 'Palestina', IL: 'Israel', US: 'Amerika Serikat', GB: 'Britania Raya', UK: 'Britania Raya',
+  CA: 'Kanada', AU: 'Australia', NZ: 'Selandia Baru',
+};
+
 export function countryName(code) {
   if (!code) return 'Negara tidak diketahui';
   const normalized = String(code).trim().toUpperCase();
+  if (COUNTRY_ALIASES[normalized]) return COUNTRY_ALIASES[normalized];
   if (/^[A-Z]{2}$/.test(normalized)) {
     try {
       return new Intl.DisplayNames(['id'], { type: 'region' }).of(normalized) || normalized;
