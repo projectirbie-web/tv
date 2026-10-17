@@ -670,3 +670,24 @@ body::after {
   .footer-nav { order: 3; width: 100%; margin-left: 0; flex-wrap: wrap; }
   .footer small { order: 4; }
 }
+
+/* Responsive playback controls for subtitle tracks and quicker failover feedback. */
+.player-control-cluster { display: flex; align-items: center; justify-content: flex-end; gap: 7px; pointer-events: auto; }
+.subtitle-select { display: inline-flex; align-items: center; gap: 5px; max-width: min(44vw, 225px); padding: 6px 8px; border: 1px solid rgba(255,255,255,.2); border-radius: 100px; color: rgba(241,249,250,.84); background: rgba(6,15,20,.68); backdrop-filter: blur(10px); font-size: 9px; }
+.subtitle-select.has-subtitles { color: #d7fff4; border-color: rgba(166,240,220,.45); }
+.subtitle-select select { max-width: 170px; min-width: 0; border: 0; outline: 0; color: inherit; background: transparent; font-size: inherit; cursor: pointer; }
+.subtitle-select option { color: #eaf3f6; background: #0d1821; }
+.subtitle-note { position: absolute; z-index: 4; right: 16px; bottom: -3px; transform: translateY(100%); max-width: 86%; color: rgba(222,238,242,.62); font-size: 8px; line-height: 1.4; text-align: right; pointer-events: none; }
+.app-fallback { min-height: 100vh; padding: 48px 24px; color: #f5f9ff; background: #07131f; }
+.app-fallback p { margin: 0; color: #c4d5de; font-size: 12px; }
+@media (max-width: 540px) {
+  .player-control-cluster { gap: 4px; }
+  .subtitle-select { gap: 4px; max-width: 44vw; padding: 6px 7px; font-size: 8px; }
+  .subtitle-select select { max-width: 27vw; }
+  .subtitle-note { right: 10px; bottom: -2px; font-size: 7px; }
+}
+
+.player-error-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-top: 4px; }
+.external-link { cursor: pointer; }
+.retry-stream { color: #e7f5f8; background: rgba(16, 43, 51, .92); font: inherit; }
+.retry-stream:hover { background: rgba(29, 67, 78, .95); border-color: rgba(180, 233, 241, .55); }

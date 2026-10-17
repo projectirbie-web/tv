@@ -1,3 +1,5 @@
+import { Suspense } from 'react';
+import App from '../src/App.jsx';
 import '../src/styles.css';
 
 export const metadata = {
@@ -6,10 +8,17 @@ export const metadata = {
   applicationName: 'YEGTv',
 };
 
+function AppFallback() {
+  return <main className="app-fallback"><p>Menyiapkan YEGTv…</p></main>;
+}
+
 export default function RootLayout({ children }) {
   return (
     <html lang="id">
-      <body>{children}</body>
+      <body>
+        <Suspense fallback={<AppFallback />}><App /></Suspense>
+        {children}
+      </body>
     </html>
   );
 }

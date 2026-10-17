@@ -1,0 +1,16 @@
+ website/DEPLOYMENT.md                  |   5 [32m+[m
+ website/app/_components/AppPage.jsx    |  14 [31m---[m
+ website/app/channel/[slug]/page.jsx    |   5 [32m+[m[31m-[m
+ website/app/favorit/page.jsx           |   3 [32m+[m[31m-[m
+ website/app/jelajah/page.jsx           |   3 [32m+[m[31m-[m
+ website/app/layout.jsx                 |  11 [32m+[m[31m-[m
+ website/app/page.jsx                   |   3 [32m+[m[31m-[m
+ website/app/siaran/page.jsx            |   3 [32m+[m[31m-[m
+ website/app/tentang/page.jsx           |   3 [32m+[m[31m-[m
+ website/package.json                   |   3 [32m+[m[31m-[m
+ website/scripts/sync-channels.mjs      |  27 [32m++++[m[31m-[m
+ website/src/App.jsx                    | 109 [32m+++++++++++++[m[31m----[m
+ website/src/components/VideoPlayer.jsx | 272 [32m++++++++++++++++++++++++++++++++[m[31m----------[m
+ website/src/lib/playlist.js            |   9 [32m++[m
+ website/src/styles.css                 |  21 [32m++++[m
+ 15 files changed, 373 insertions(+), 118 deletions(-)
