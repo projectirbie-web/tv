@@ -2,14 +2,14 @@
   {
     "id": "official-id-trans7",
     "name": "TRANS7",
-    "url": "https://www.transtv.co.id/live/trans7/embed?autoplay=true&mute=false&player_only=true",
+    "url": "https://20.detik.com/watch/livestreaming-trans7?smartautoplay=true",
     "sourcePage": "https://www.transtv.co.id/live/trans7/embed?autoplay=true&mute=false&player_only=true",
     "logo": "",
     "tvgId": "TRANS7.ID",
     "category": "Nasional",
     "countryCode": "ID",
     "playerType": "embed",
-    "sourceType": "official-embed",
+    "sourceType": "official-embed-candidate",
     "requiresReferrer": false,
     "requiresUserAgent": false
   }
