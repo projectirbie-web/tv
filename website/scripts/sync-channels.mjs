@@ -196,14 +196,195 @@ async function main() {
     console.log('Katalog embed resmi belum dibuat; hanya menggunakan playlist.');
   }
 
-  const seen = new Set();
-  const channels = [];
-  for (const row of [...perFile.flat(), ...officialChannels]) {
-    const key = `${row.url}\n${row.name}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    channels.push({ ...row, playerType: row.playerType || 'hls' });
+ 
+const seen = new Set();
+const channels = [];
+
+const allRows = [...perFile.flat(), ...officialChannels];
+
+// Nama TVRI yang sudah dinormalisasi agar tidak tampil ganda.
+const normalizeTvriName = (name = '') => {
+  let clean = name
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\s*\[(?:Geo-blocked|Not 24\/7)[^\]]*\]/gi, '')
+    .replace(/\s*\[(?:\d{3,4}[pi])\]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const lower = clean.toLowerCase();
+
+  if (/^tvri\s*(?:nasional)?$/i.test(clean)) return 'TVRI Nasional';
+  if (/^tvri\s*(?:babel|bangka belitung)$/i.test(clean)) {
+    return 'TVRI Bangka Belitung';
   }
+  if (/^tvri\s*(?:dki|jakarta)$/i.test(clean)) return 'TVRI Jakarta';
+  if (/^tvri\s*(?:kalbar|kalimantan barat)$/i.test(clean)) {
+    return 'TVRI Kalimantan Barat';
+  }
+  if (/^tvri\s*kalsel$/i.test(clean)) return 'TVRI Kalimantan Selatan';
+  if (/^tvri\s*kalteng$/i.test(clean)) return 'TVRI Kalimantan Tengah';
+  if (/^tvri\s*kaltim$/i.test(clean)) return 'TVRI Kalimantan Timur';
+  if (/^tvri\s*sulbar$/i.test(clean)) return 'TVRI Sulawesi Barat';
+  if (/^tvri\s*sulsel$/i.test(clean)) return 'TVRI Sulawesi Selatan';
+  if (/^tvri\s*sulteng$/i.test(clean)) return 'TVRI Sulawesi Tengah';
+  if (/^tvri\s*sultra$/i.test(clean)) return 'TVRI Sulawesi Tenggara';
+  if (/^tvri\s*sulut$/i.test(clean)) return 'TVRI Sulawesi Utara';
+  if (/^tvri\s*sumbar$/i.test(clean)) return 'TVRI Sumatera Barat';
+  if (/^tvri\s*sumsel$/i.test(clean)) return 'TVRI Sumatera Selatan';
+  if (/^tvri\s*sumut$/i.test(clean)) return 'TVRI Sumatera Utara';
+  if (/^tvri\s*maluku$/i.test(clean)) return 'TVRI Maluku';
+  if (/^tvri\s*ntb$/i.test(clean)) return 'TVRI Nusa Tenggara Barat';
+  if (/^tvri\s*ntt$/i.test(clean)) return 'TVRI Nusa Tenggara Timur';
+  if (/^tvri\s*west papua$/i.test(clean)) return 'TVRI Papua Barat';
+  if (/^tvri\s*north sulawesi$/i.test(clean)) return 'TVRI Sulawesi Utara';
+  if (/^tvri\s*north sumatra$/i.test(clean)) return 'TVRI Sumatera Utara';
+  if (/^tvri\s*world$/i.test(clean)) return 'TVRI World';
+  if (/^tvri\s*sport(?: hd)?$/i.test(clean)) return 'TVRI Sport';
+
+  return clean || name;
+};
+
+const tvriPriority = (row) => {
+  const url = String(row.url || '');
+  const name = String(row.name || '');
+
+  // Utamakan HLS daripada halaman resmi atau sumber yang ditandai bermasalah.
+  if (!/\.m3u8(?:$|\?)/i.test(url)) return 0;
+  if (/geo-blocked|not 24\/7/i.test(name)) return 1;
+  if (/ott-balancer\.tvri\.go\.id/i.test(url)) return 3;
+  return 2;
+};
+
+const rejectedSourcePatterns = [
+  // Stream dan halaman yang gagal pada pengujian sebelumnya
+  /video\.detik\.com\/(?:transtv|trans7)\//i,
+  /video\.detik\.com\/livecnn\//i,
+  /video\.detik\.com\/livecnbc\//i,
+  /20\.detik\.com\/watch\/livestreaming-(?:transtv|trans7)/i,
+  /livestream\.kompas\.tv/i,
+  /cdn\.metrotvnews\.com/i,
+  /live\.cnnindonesia\.com/i,
+  /live\.cnbcindonesia\.com/i,
+  /live\.antara\.tv/i,
+  /cdn\.inews\.id/i,
+  /wahyu1ptv\.pages\.dev/i,
+  /rtvstream\.rtv\.co\.id/i,
+  /rtv-stream2\.a04f922e9e85c8d25ebfeae3dfd22a67\.com/i,
+  /mncmedia\.malingtv\.workers\.dev/i,
+  /202\.150\.172\.59/i,
+  /flv\.intechmedia\.net\/live\/ch107\.m3u8/i,
+  /sunplay-cdn\.bitratelabs\.com\/live\/local-channel\/vtv-/i,
+  /transtv\.co\.id\/live\//i,
+  /rctiplus\.com\/tv\//i,
+  /rtv\.co\.id\/live\//i,
+  /www\.kompas\.tv\/live/i,
+];
+
+const preferredDirectSources = new Map([
+  [
+    'metro tv',
+    'https://edge.medcom.id/live-edge/smil:metro.smil/playlist.m3u8',
+  ],
+  [
+    'u channel',
+    'https://srs.u-channel.tv/live/uchannel-tv.m3u8',
+  ],
+  [
+    'cnn international',
+    'https://d3bp6dwmpbdajl.cloudfront.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc-ury0meh5m4nzm/index.m3u8',
+  ],
+  [
+    'cnbc arabiya',
+    'https://cnbc-live.akamaized.net/cnbc/master.m3u8',
+  ],
+]);
+
+for (const original of allRows) {
+     const sourceUrl = String(original.url || '');
+  const sourceName = String(original.name || '');
+
+  const normalizedName = sourceName
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\s*\[[^\]]*\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleLowerCase('en');
+
+  // Halaman resmi dan embed belum berhasil diputar di YEGTV.
+  if (
+    ['official-link', 'embed'].includes(
+      String(original.playerType || '').toLowerCase()
+    )
+  ) {
+    continue;
+  }
+
+  // Buang sumber yang ditandai tidak dapat diakses.
+  if (/\[Geo-blocked\]/i.test(sourceName)) continue;
+
+  // Buang URL yang sudah gagal diuji.
+  if (
+    rejectedSourcePatterns.some((pattern) => pattern.test(sourceUrl))
+  ) {
+    continue;
+  }
+
+  // Untuk empat channel terpilih, gunakan hanya sumber yang sudah diuji.
+  const preferredUrl = preferredDirectSources.get(normalizedName);
+
+  if (preferredUrl && sourceUrl !== preferredUrl) continue;
+
+  // Bersihkan duplikat Metro TV, termasuk nama dengan label resolusi.
+  if (
+    /\bmetro tv\b/i.test(normalizedName) &&
+    sourceUrl !== preferredDirectSources.get('metro tv')
+  ) {
+    continue;
+  } 
+   const isTvri = /tvri/i.test(`${original.name || ''} ${original.tvgId || ''}`);
+
+  // Untuk TVRI, tampilkan sumber HLS saja.
+  if (isTvri && !/\.m3u8(?:$|\?)/i.test(original.url || '')) continue;
+
+  // Buang sumber TVRI yang sudah diketahui bermasalah.
+  if (isTvri && /geo-blocked/i.test(original.name || '')) continue;
+
+  const row = {
+    ...original,
+    name: isTvri ? normalizeTvriName(original.name) : original.name,
+    playerType: original.playerType || 'hls',
+  };
+
+  // Satu nama channel hanya boleh tampil satu kali.
+  const key = isTvri
+    ? `tvri:${row.name.toLocaleLowerCase('id')}`
+    : `${row.url}\n${row.name}`;
+
+  const existingIndex = channels.findIndex((item) => {
+    const existingIsTvri =
+      /tvri/i.test(`${item.name || ''} ${item.tvgId || ''}`);
+
+    if (isTvri && existingIsTvri) {
+      return `tvri:${item.name.toLocaleLowerCase('id')}` === key;
+    }
+
+    return !isTvri && `${item.url}\n${item.name}` === key;
+  });
+
+  if (existingIndex === -1) {
+    channels.push(row);
+    continue;
+  }
+
+  // Jika ada duplikat TVRI, pilih sumber dengan prioritas lebih tinggi.
+  if (
+    isTvri &&
+    tvriPriority(row) > tvriPriority(channels[existingIndex])
+  ) {
+    channels[existingIndex] = row;
+  }
+}
+
   const countryPriority = ['id', 'my', 'th', 'kr', 'jp', 'sa', 'ae', 'qa', 'kw', 'bh', 'om', 'ye', 'jo', 'iq', 'lb', 'ps', 'il', 'us', 'gb', 'uk', 'ca', 'au', 'nz', 'fr', 'de', 'es', 'it'];
   const priorityIndex = (code) => {
     const index = countryPriority.indexOf(String(code || '').toLowerCase());
